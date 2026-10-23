@@ -34,7 +34,7 @@ android.accept_sdk_license = True
 android.allow_backup = False
 
 # صلاحيات التخزين الكاملة لحفظ البلاطات
-android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
+android.permissions =INTERNET, READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
 
 # ---- python-for-android
 p4a.branch = v2024.01.21

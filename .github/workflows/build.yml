@@ -1,1 +1,102 @@
+name: Build APK
 
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip autoconf automake libtool pkg-config cmake \
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 \
+            libffi-dev libssl-dev libltdl-dev build-essential ccache
+
+      - name: Buildozer
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install buildozer "cython==0.29.36" virtualenv pillow
+
+      # التخزين المؤقت لملفات SDK و NDK لتسريع عملية البناء اللاحقة
+      - name: Cache buildozer
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-${{ runner.os }}-
+
+      - name: Placeholder icon and splash (only if missing)
+        run: |
+          python - <<'PY'
+          import os
+          from PIL import Image, ImageDraw
+          def make(path, size, text):
+              if os.path.exists(path):
+                  return
+              im = Image.new('RGB', size, (12, 14, 19))
+              d = ImageDraw.Draw(im)
+              w, h = size
+              r = min(w, h) // 4
+              d.ellipse((w // 2 - r, h // 2 - r, w // 2 + r, h // 2 + r), outline=(51, 137, 250), width=max(6, r // 8))
+              d.text((w // 2, h // 2), text, fill=(255, 255, 255), anchor='mm')
+              im.save(path)
+          make('icon.png', (512, 512), 'MAP')
+          make('splash.png', (1024, 1024), 'MAP')
+          PY
+
+      - name: Build debug APK
+        env:
+          BUILDOZER_WARN_ON_ROOT: '0'
+        run: buildozer -v android debug
+
+      - name: Show result
+        run: ls -lh bin/
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: map-downloader-apk
+          path: bin/*.apk
+          if-no-files-found: error
+
+      - name: Attach APK to the release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/*.apk
+
+      - name: Upload build log (failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-log
+          path: .buildozer/android/platform/build-*/build.log
+          if-no-files-found: ignore
